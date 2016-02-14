@@ -1,0 +1,109 @@
+---
+title: "PML-CoursePrj"
+output: html_document
+---
+
+###SUMMARY
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+###QUESTION
+The goal is to predict the manner in which they did the exercise. This is the "classe" variable in the training set and predict 20 different test cases.
+
+
+###EXPLORATORY DATA ANALYSIS
+
+Load necessary libraries
+```{r}
+library(caret)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+```
+
+Load Data
+```{r}
+training <- read.csv(file="pml-training.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))   
+testing <-  read.csv(file="pml-testing.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+
+training$classe <- as.factor(training$classe)  
+```
+
+Checking the data set we can observed a lot of variables having empty and NA values which won't be important during the prediction modeling; because of this we are going to clean the data set and reduce the data set variables, having only important measures.
+```{r}
+NATraining <- apply(training,2,function(x) {sum(is.na(x))}) 
+training <- training[,which(NATraining == 0)]
+NATesting <- apply(testing,2,function(x) {sum(is.na(x))}) 
+testing <- testing[,which(NATesting == 0)]
+```
+
+Lets check if we have variables with nozero values, which means that check for covarites that dont have variability.
+```{r}
+v <- which(lapply(training, class) %in% "numeric")
+preO <-preProcess(training[,v],method=c('knnImpute', 'center', 'scale'))
+Ttraining <- predict(preO, training[,v])
+Ttraining$classe <- training$classe
+Ttesting <-predict(preO,testing[,v])
+
+training <- Ttraining
+testing <- Ttesting
+
+nzv <- nearZeroVar(training, saveMetrics=TRUE)
+training <- training[,nzv$nzv==FALSE]
+nzv
+
+nzv <- nearZeroVar(testing, saveMetrics=TRUE)
+testing <- testing[,nzv$nzv==FALSE]
+nzv
+```
+For both data sets there are no near zero variance variables, which means they are FALSE, so , we dont need to elimiante any covarites.
+
+
+
+###MODELS & ALGORITHMS
+
+First let´s divide the training data set in two (training and test/cross validation) as the standard  (60% for Training, 40% for Testing)
+```{r}
+set.seed(987654)
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+NTraining <- training[inTrain, ]; 
+NTesting <- training[-inTrain, ]
+```
+
+First Algorithm : Decision Tree
+```{r}
+modelDT <- train(NTraining$classe ~ ., data = NTraining, method="rpart")
+print(modelDT, digits=3)
+
+```
+
+Predict and check confusion matrix for results
+```{r}
+predictDT <- predict(modelDT, NTesting)
+confusionMatrix(predictDT, NTesting$classe)
+```
+
+
+Second Algorithm : Random Forest
+```{r}
+modelRF <- train(classe ~., method="rf", data=NTraining, trControl=trainControl(method='cv'), number=5, allowParallel=TRUE )
+```
+
+Predict and check confusion matrix for results
+```{r}
+predictRF <- predict(modelRF, NTesting)
+confusionMatrix(predictRF, NTesting$classe)
+```
+
+We can observe that Random Forest algorithm have better results (Accuracy) than Decison Tree, so we will be using Random Forest algorithm for prediction on testing data set.
+
+
+###PREDICTION MODEL AND RESULTS (EVALUATION)
+
+Executing prediction on real testing set
+```{r}
+predictReal <- predict(modelRF, testing)
+predictReal
+```
+
+
